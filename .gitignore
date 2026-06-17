@@ -1,0 +1,7 @@
+# Binários compilados
+matmul_seq
+matmul_par
+*.exe
+
+# Dependências Go (geradas pelo go mod tidy)
+vendor/
