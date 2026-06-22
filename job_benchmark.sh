@@ -5,8 +5,9 @@
 #SBATCH --time=16:00:00
 #SBATCH --output=benchmark_%j.out
 
-module load openmpi
-module load go
+export PATH=/LADAPPs/OpenMPI/openmpi-4.1.1/bin:$PATH
+export PKG_CONFIG_PATH=/LADAPPs/OpenMPI/openmpi-4.1.1/lib/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=/LADAPPs/OpenMPI/openmpi-4.1.1/lib:$LD_LIBRARY_PATH
 
 REPO_DIR=$SLURM_SUBMIT_DIR
 REPETICOES=3
