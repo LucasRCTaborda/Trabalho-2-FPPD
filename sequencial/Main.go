@@ -9,7 +9,7 @@ import (
 const SEED = 42
 
 func main() {
-	N := 3000
+	N := 4000
 
 	fmt.Printf("Multiplicação de Matrizes Sequencial — N=%d\n", N)
 	fmt.Printf("Seed: %d\n", SEED)

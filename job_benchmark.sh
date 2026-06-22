@@ -5,12 +5,11 @@
 #SBATCH --time=16:00:00
 #SBATCH --output=benchmark_%j.out
 
-# ── Configurar OpenMPI do cluster ──────────────────
+# ── OpenMPI do cluster LAD/PUCRS ──────────────────
 OMPI_DIR=/LADAPPs/OpenMPI/openmpi-4.1.1
 export PATH=$OMPI_DIR/bin:$PATH
 export LD_LIBRARY_PATH=$OMPI_DIR/lib:$LD_LIBRARY_PATH
 
-# Criar ompi.pc para o CGo do gompi conseguir compilar
 mkdir -p ~/pkgconfig
 cat > ~/pkgconfig/ompi.pc << PCEOF
 Name: ompi
@@ -25,7 +24,7 @@ REPO_DIR=$SLURM_SUBMIT_DIR
 REPETICOES=3
 
 echo "=============================================="
-echo " BENCHMARK - Multiplicação de Matrizes N=3000"
+echo " BENCHMARK — Multiplicação de Matrizes N=4000"
 echo " Data: $(date)"
 echo " Nó: $(hostname)"
 echo " OpenMPI: $(mpirun --version 2>&1 | head -1)"
@@ -55,48 +54,47 @@ echo "=============================================="
 echo " EXECUTANDO TESTES (${REPETICOES}x cada config)"
 echo "=============================================="
 
-# ── Sequencial (baseline) ──────────────────────────
+# ── Config 1: Sequencial ──────────────────────────
 echo ""
-echo ">>> SEQUENCIAL (1 processo)"
+echo ">>> CONFIG 1: Sequencial (1 processo, 1 nó)"
 cd "$REPO_DIR/sequencial"
-t1=$(./matmul_seq | extrair_tempo); echo "  Execução 1: ${t1}s"
-t2=$(./matmul_seq | extrair_tempo); echo "  Execução 2: ${t2}s"
-t3=$(./matmul_seq | extrair_tempo); echo "  Execução 3: ${t3}s"
+t1=$(./matmul_seq | extrair_tempo); echo "  Exec 1: ${t1}s"
+t2=$(./matmul_seq | extrair_tempo); echo "  Exec 2: ${t2}s"
+t3=$(./matmul_seq | extrair_tempo); echo "  Exec 3: ${t3}s"
 T_SEQ=$(mediana $t1 $t2 $t3)
-echo "  Mediana sequencial: ${T_SEQ}s"
+echo "  Mediana: ${T_SEQ}s"
 
-# ── Paralelo por número de processos ──────────────
+# ── Configs 2-5: Paralelo 1 nó (Fator 1 + 3) ─────
 cd "$REPO_DIR/Paralelo"
 for NP in 2 4 8 16; do
     echo ""
-    echo ">>> PARALELO com ${NP} processos"
-    t1=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Execução 1: ${t1}s"
-    t2=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Execução 2: ${t2}s"
-    t3=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Execução 3: ${t3}s"
+    echo ">>> CONFIG: Paralelo ${NP} processos, 1 nó"
+    t1=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Exec 1: ${t1}s"
+    t2=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Exec 2: ${t2}s"
+    t3=$(mpirun -np $NP ./matmul_par | extrair_tempo); echo "  Exec 3: ${t3}s"
     T_MED=$(mediana $t1 $t2 $t3)
-    SPEEDUP=$(echo "scale=3; $T_SEQ / $T_MED" | bc)
-    EFIC=$(echo "scale=1; $SPEEDUP / $NP * 100" | bc)
-    echo "  Mediana: ${T_MED}s  |  Speedup: ${SPEEDUP}x  |  Eficiência: ${EFIC}%"
+    SP=$(echo "scale=3; $T_SEQ / $T_MED" | bc)
+    EF=$(echo "scale=1; $(echo "scale=4; $T_SEQ / $T_MED / $NP * 100" | bc)" | bc)
+    echo "  Mediana: ${T_MED}s | Speedup: ${SP}x | Eficiência: ${EF}%"
 done
 
-# ── Tabela resumo ──────────────────────────────────
 echo ""
 echo "=============================================="
-echo " TABELA FINAL DE RESULTADOS"
+echo " TABELA FINAL — FATOR 1 e FATOR 3"
 echo "=============================================="
-echo "Processos | Tp (mediana) | Speedup | Eficiência"
-echo "----------|--------------|---------|----------"
+echo "Nós | Processos | Tp mediana (s) | Speedup | Eficiência"
+echo "----|-----------|----------------|---------|----------"
 
 cd "$REPO_DIR/sequencial"
 TS=$(./matmul_seq | extrair_tempo)
-echo "    1     |   ${TS}s   |  1.000  |  100.0%   (sequencial)"
+echo "  1 |  1 (seq)  |     ${TS}s    |  1.000  |  100.0%"
 
 cd "$REPO_DIR/Paralelo"
 for NP in 2 4 8 16; do
     TP=$(mpirun -np $NP ./matmul_par | extrair_tempo)
     SP=$(echo "scale=3; $TS / $TP" | bc)
-    EF=$(echo "scale=1; $SP / $NP * 100" | bc)
-    echo "   ${NP}     |   ${TP}s   |  ${SP}  |  ${EF}%"
+    EF=$(echo "scale=1; $(echo "scale=4; $TS / $TP / $NP * 100" | bc)" | bc)
+    echo "  1 |    ${NP}      |     ${TP}s    |  ${SP}  |  ${EF}%"
 done
 
 echo ""

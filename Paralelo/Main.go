@@ -18,7 +18,7 @@ func main() {
 	rank := comm.GetRank()
 	size := comm.GetSize()
 
-	N := 3000
+	N := 4000
 
 	// Apenas o rank 0 imprime o cabeçalho
 	if rank == 0 {
