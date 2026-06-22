@@ -4,6 +4,11 @@ FPPD — Fundamentos de Processamento Paralelo e Distribuído (98713-04)
 Escola Politécnica — PUCRS — 2026/1
 
 ---
+ 
+ ## Rodar
+
+watch -n 10 squeue -u $USER
+cat benchmark_*.out
 
 ## Estrutura do Projeto
 
