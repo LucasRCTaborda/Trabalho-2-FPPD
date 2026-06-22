@@ -1,7 +1,7 @@
 # T2 — Multiplicação de Matrizes com MPI em Go
 **FPPD — Fundamentos de Processamento Paralelo e Distribuído (98713-04)**  
 Escola Politécnica — PUCRS — 2026/1  
-Cluster: Atlântica (LAD/PUCRS) — N = 3000
+Cluster: Atlântica (LAD/PUCRS) — N = 3000 *(ver Seção 5 sobre N=4000)*
 
 ---
 
@@ -11,63 +11,56 @@ Cluster: Atlântica (LAD/PUCRS) — N = 3000
 
 ### Justificativa
 
-A multiplicação de matrizes `C = A × B` calcula cada linha `i` de `C` de forma independente:
+A multiplicação `C = A × B` calcula cada linha `i` de `C` de forma independente:
 
 ```
-C[i][j] = soma de A[i][k] * B[k][j], para k = 0..N-1
+C[i][j] = soma( A[i][k] * B[k][j] ), para k = 0..N-1
 ```
 
-Como não há dependência entre linhas diferentes de `C`, o trabalho pode ser dividido igualmente entre os processos. Cada processo calcula um bloco contíguo de linhas de `C`, sem precisar se comunicar com outros processos durante o cálculo — apenas no início (distribuição) e no fim (coleta).
-
-O rank 0 atua como mestre: sincroniza o início, aguarda os resultados e monta a matriz `C` final.
+Como não há dependência entre linhas distintas de `C`, o trabalho pode ser dividido igualmente entre os processos. Cada processo calcula um bloco contíguo de linhas, sem comunicação durante o cálculo — apenas coleta final no rank 0.
 
 ---
 
 ## 2. Estratégia de Decomposição dos Dados
 
 ```
-Processo 0: linhas 0   .. N/P - 1
-Processo 1: linhas N/P .. 2N/P - 1
+Processo 0  →  linhas 0        até (N/P - 1)
+Processo 1  →  linhas N/P      até (2N/P - 1)
 ...
-Processo P-1: linhas restantes (inclui sobra se N % P != 0)
+Processo P-1 → linhas restantes (inclui sobra se N % P ≠ 0)
 ```
 
-**Evitamos broadcast de A e B:** todos os processos geram as matrizes localmente com a mesma seed (42), eliminando O(N²) de dados na rede.
-
-**Cada processo precisa de:**
-- Suas linhas de A (para calcular)
-- A matriz B completa (cada linha de C depende de toda B)
+**Decisão de projeto:** todos os processos geram A e B localmente com a mesma seed (42), eliminando o broadcast de O(N²) dados pela rede. Cada processo precisa de suas linhas de A e da matriz B inteira.
 
 ---
 
 ## 3. Explicação do Código
 
-### 3.1 Versão Sequencial (`sequencial/Main.go`)
+### 3.1 Versão Sequencial — `sequencial/Main.go`
 
 ```go
 const SEED = 42
 
 func main() {
-    N := 3000
+    N := 4000  // N=3000 nos testes abaixo; aumentado para 4000 por exigência do trabalho
 
-    // Matrizes como slices 1D row-major: A[i][j] = A[i*N + j]
+    // Slices 1D row-major: A[i][j] = A[i*N + j]
     A := make([]float64, N*N)
     B := make([]float64, N*N)
     C := make([]float64, N*N)
 
-    // Geração determinística — mesma seed garante reprodutibilidade
     rng := rand.New(rand.NewSource(SEED))
     for i := 0; i < N*N; i++ {
         A[i] = rng.Float64()
         B[i] = rng.Float64()
     }
 
-    inicio := time.Now()
+    inicio := time.Now()  // timer inicia APÓS geração das matrizes
 
-    // Algoritmo ingênuo (i, k, j) — ordem k antes de j melhora cache
+    // Loop (i, k, j): acesso sequencial a B[k*N+j] — melhor localidade de cache
     for i := 0; i < N; i++ {
         for k := 0; k < N; k++ {
-            aik := A[i*N+k]       // carrega A[i][k] uma vez fora do loop j
+            aik := A[i*N+k]
             for j := 0; j < N; j++ {
                 C[i*N+j] += aik * B[k*N+j]
             }
@@ -85,39 +78,36 @@ func main() {
 }
 ```
 
-**Pontos importantes:**
-- Slices 1D (`row-major`) facilitam o envio por MPI (bloco contíguo de memória).
-- O loop interno é `(i, k, j)` em vez de `(i, j, k)` para melhor localidade de cache: `B[k*N+j]` é acessado sequencialmente no loop mais interno.
-- A geração das matrizes é **excluída** da medição de tempo.
+**Destaques:**
+- Slices 1D (row-major) facilitam o envio MPI como bloco contíguo de memória.
+- Ordem `(i, k, j)` no triplo loop: `aik` é carregado uma vez por iteração de `k`, e `B[k*N+j]` é acessado sequencialmente — melhor uso de cache L1/L2.
+- Geração das matrizes **excluída** da medição de tempo.
 
 ---
 
-### 3.2 Versão Paralela (`Paralelo/Main.go`)
+### 3.2 Versão Paralela — `Paralelo/Main.go`
 
 ```go
 func main() {
     mpi.Init()
     defer mpi.Finalize()
 
-    comm := mpi.NewComm(true)   // panicOnErr=true: encerra em erro MPI
-    rank := comm.GetRank()      // identificador do processo (0 = mestre)
-    size := comm.GetSize()      // total de processos
+    comm := mpi.NewComm(true)  // panicOnErr=true
+    rank := comm.GetRank()     // 0 = mestre
+    size := comm.GetSize()     // total de processos
 
-    N := 3000
+    N := 4000
 
-    // Todos os processos geram A e B com a mesma seed
-    // Evita broadcast de O(N²) dados pela rede
-    A := make([]float64, N*N)
-    B := make([]float64, N*N)
+    // Todos geram A e B com mesma seed — sem broadcast pela rede
     rng := rand.New(rand.NewSource(SEED))
     for i := 0; i < N*N; i++ {
         A[i] = rng.Float64()
         B[i] = rng.Float64()
     }
 
-    // Divisão de linhas entre processos
+    // Divisão de linhas: primeiros (N%size) processos recebem 1 linha extra
     linhasPorProcesso := N / size
-    linhaExtra := N % size      // sobra distribuída nos primeiros processos
+    linhaExtra        := N % size
 
     var startRow, numLinhas int
     if rank < linhaExtra {
@@ -128,15 +118,14 @@ func main() {
         startRow  = rank*numLinhas + linhaExtra
     }
 
-    // Sincronização antes de medir o tempo
-    comm.Barrier()
+    comm.Barrier()          // sincroniza todos antes de iniciar o timer
 
     var inicio time.Time
     if rank == 0 {
-        inicio = time.Now()    // timer inicia ANTES de qualquer impressão
+        inicio = time.Now() // timer inicia no rank 0 após barreira
     }
 
-    // Cálculo local: cada processo computa suas linhas de C
+    // Computação local: cada processo calcula suas linhas de C
     localC := make([]float64, numLinhas*N)
     for i := 0; i < numLinhas; i++ {
         globalI := startRow + i
@@ -153,16 +142,8 @@ func main() {
         C := make([]float64, N*N)
         copy(C[startRow*N:(startRow+numLinhas)*N], localC)
 
-        // Receber de cada worker
         for src := 1; src < size; src++ {
-            var srcStart, srcLinhas int
-            if src < linhaExtra {
-                srcLinhas = linhasPorProcesso + 1
-                srcStart  = src * srcLinhas
-            } else {
-                srcLinhas = linhasPorProcesso
-                srcStart  = src*srcLinhas + linhaExtra
-            }
+            // Recalcula startRow e numLinhas do processo src
             buf := make([]float64, srcLinhas*N)
             comm.Recv(buf, src, 0)
             copy(C[srcStart*N:(srcStart+srcLinhas)*N], buf)
@@ -170,30 +151,27 @@ func main() {
 
         tempo := time.Since(inicio)
         fmt.Printf("Tempo de execução paralela: %.4f segundos\n", tempo.Seconds())
-        // ... impressão dos cantos e checksum
+        // imprime cantos e checksum
 
     } else {
-        // Workers enviam suas linhas ao mestre
-        comm.Send(localC, 0, 0)
+        comm.Send(localC, 0, 0)  // worker envia suas linhas ao mestre
     }
 }
 ```
 
-**O tempo medido inclui:** cálculo paralelo + comunicação Send/Recv  
+**O tempo medido inclui:** cálculo paralelo + Send/Recv (coleta)  
 **O tempo exclui:** geração das matrizes A e B
 
 ---
 
-## 4. Como Compilar e Executar (passo a passo)
+## 4. Como Compilar e Executar no Cluster (passo a passo)
 
-### 4.1 Pré-requisitos no cluster
+### 4.1 Configurar OpenMPI (executar uma vez na sessão)
 
 ```bash
-# Configurar OpenMPI (LAD/PUCRS)
 export PATH=/LADAPPs/OpenMPI/openmpi-4.1.1/bin:$PATH
 export LD_LIBRARY_PATH=/LADAPPs/OpenMPI/openmpi-4.1.1/lib:$LD_LIBRARY_PATH
 
-# Criar pkg-config para o compilador Go encontrar o OpenMPI
 mkdir -p ~/pkgconfig
 cat > ~/pkgconfig/ompi.pc << EOF
 Name: ompi
@@ -212,38 +190,40 @@ git clone https://github.com/LucasRCTaborda/Trabalho-2-FPPD.git
 cd Trabalho-2-FPPD
 
 # Sequencial
-cd sequencial
-go build -o matmul_seq .
+cd sequencial && go build -o matmul_seq .
 
-# Paralelo (usa vendor — sem internet necessária)
-cd ../Paralelo
-go mod vendor          # apenas se vendor/ não existir
-go build -mod=vendor -o matmul_par .
+# Paralelo (dependências embutidas no vendor/)
+cd ../Paralelo && go build -mod=vendor -o matmul_par .
 ```
 
-### 4.3 Executar via SLURM (obrigatório para benchmarks)
+### 4.3 Submeter via SLURM
 
 ```bash
-# Submeter o benchmark completo (1, 2, 4, 8, 16 processos — 3x cada)
-sbatch job_benchmark.sh
+sbatch job_benchmark.sh   # Fator 1 e 3 — 1 nó, 2/4/8/16 processos
+sbatch job_internos.sh    # Fator 2 — 2 nós, comparação inter-nós
 
-# Acompanhar
-squeue -u $USER
-
-# Ver resultado ao terminar
-cat benchmark_*.out
+squeue -u $USER           # acompanhar
+cat benchmark_*.out       # ver resultados
+cat internos_*.out
 ```
-
-> **Nunca rodar `mpirun` diretamente no nó de login** — use sempre `sbatch` ou `salloc`.
 
 ---
 
-## 5. Resultados Obtidos
+## 5. Tamanho do Problema
+
+O trabalho exige N = 3000 como padrão. Se o tempo sequencial for inferior a 3 minutos, deve-se usar N = 4000.
+
+**Resultado obtido no cluster:** tempo sequencial com N = 3000 foi **~58.5 segundos < 3 minutos**.  
+→ **N = 4000 é obrigatório.** Os dados abaixo são de N = 3000 (primeira rodada). Os testes com N = 4000 estão em execução.
+
+---
+
+## 6. Resultados Obtidos (N = 3000 — rodada inicial)
 
 **Ambiente:** Cluster Atlântica (LAD/PUCRS), 1 nó (`atlantica01`), N = 3000  
 **Data:** 22/06/2026
 
-### Tempos individuais (3 execuções cada)
+### Tempos individuais — todas as execuções
 
 | Processos | Exec 1 (s) | Exec 2 (s) | Exec 3 (s) | Mediana (s) |
 |-----------|-----------|-----------|-----------|-------------|
@@ -253,127 +233,137 @@ cat benchmark_*.out
 | 8         | 8.9410    | 8.9217    | 8.9421    | **8.9410**  |
 | 16        | 8.6308    | 8.6386    | 8.6456    | **8.6386**  |
 
-### Tabela de desempenho
+### Tabela de desempenho — Ts = 58.4752 s
 
-Ts (baseline) = **58.4752 s**
-
-| Nós | Processos | Tp mediana (s) | Speedup (Sp = Ts/Tp) | Eficiência (E = Sp/P) | Obs.               |
-|-----|-----------|----------------|----------------------|-----------------------|--------------------|
-| 1   | 1 (seq)   | 58.4752        | 1.000                | 100.0%                | Baseline           |
-| 1   | 2         | 30.3831        | 1.924                | 96.2%                 | Escalabilidade     |
-| 1   | 4         | 15.5107        | 3.769                | 94.2%                 | Escalabilidade     |
-| 1   | 8         | 8.9410         | 6.540                | 81.7%                 | Próx. de cores físicos |
-| 1   | 16        | 8.6386         | 6.769                | 42.3%                 | Oversubscription   |
+| Nós | Processos | Tp mediana (s) | Speedup (Sp = Ts/Tp) | Eficiência (E = Sp/P) | Obs.                    |
+|-----|-----------|----------------|----------------------|-----------------------|-------------------------|
+| 1   | 1 (seq)   | 58.4752        | 1.000                | 100.0%                | Baseline                |
+| 1   | 2         | 30.3831        | 1.924                | 96.2%                 | Fator 1 — escalabilidade |
+| 1   | 4         | 15.5107        | 3.769                | 94.2%                 | Fator 1 — escalabilidade |
+| 1   | 8         | 8.9410         | 6.540                | 81.8%                 | Fator 1 + 3             |
+| 1   | 16        | 8.6386         | 6.769                | 42.3%                 | Fator 3 — hyperthreading |
+| 2   | 4         | *pendente*     | —                    | —                     | Fator 2 — inter-nós     |
+| 2   | 8         | *pendente*     | —                    | —                     | Fator 2 — inter-nós     |
 
 ---
 
-## 6. Gráficos
+## 7. Gráficos
 
-### 6.1 Speedup vs. Número de Processos
+### 7.1 Speedup vs. Número de Processos
 
 ```
 Speedup
-  16 |. . . . . . . . . . . . . . . (ideal)
-     |                          /
-   8 |               . . . . ./. .
-     |          *6.54         /
-     |      *3.77            /
-   4 |                      /
-     |   *1.92             /
-     |                    /
-   1 |*1.00              /
-     +----+----+----+----+----- Processos
-     1    2    4    8   16
+  16 |. . . . . . . . . . . . . . . . (ideal Sp = P)
+     |
+   8 |               * 6.54   * 6.77
+     |          * 3.77
+     |
+   4 |
+     |   * 1.92
+     |
+   1 |* 1.00
+     +-----+-----+-----+------+----- Processos
+     1     2     4     8     16
 
-* = speedup obtido   / = speedup ideal (Sp = P)
+  * = speedup obtido     . = speedup ideal
 ```
 
-### 6.2 Eficiência vs. Número de Processos
+### 7.2 Eficiência vs. Número de Processos
 
 ```
 Eficiência
- 100%|*----*
-     |      \*
-  80%|        \*
-     |
-  42%|            *
-     |
-   0%+----+----+----+---- Processos
-     2    4    8   16
+ 100% |* 100%
+      |  * 96.2%
+  94% |     * 94.2%
+      |
+  81% |          * 81.8%
+      |
+  42% |               * 42.3%
+      |
+   0% +-----+-----+-----+------ Processos
+      1     2     4     8    16
 
-* = eficiência obtida   --- = ideal (100%)
+  * = eficiência obtida     --- = ideal (100%)
 ```
 
-### 6.3 Observação sobre inter-nós
+### 7.3 Comparação Intra-nó vs. Inter-nós
 
-Não foram coletados dados inter-nós nesta rodada (apenas 1 nó).  
-Para completar o Fator 2 do trabalho, submeter com `--nodes=2 --ntasks=4 --ntasks-per-node=2` e comparar com a execução de 4 processos em 1 nó.
+*Dados inter-nós pendentes (job_internos.sh em execução). Tabela será completada após resultados.*
+
+| Processos | 1 nó (intra) | 2 nós (inter) | Diferença |
+|-----------|-------------|---------------|-----------|
+| 4         | 15.51s      | *pendente*    | —         |
+| 8         | 8.94s       | *pendente*    | —         |
 
 ---
 
-## 7. Discussão
+## 8. Discussão
 
-### 7.1 O speedup é sub-linear, linear ou super-linear?
+### 8.1 O speedup é sub-linear, linear ou super-linear?
 
-**Sub-linear.** O maior speedup obtido foi **6.77x com 16 processos**, quando o ideal seria 16x. Isso é esperado porque:
-- Existe uma fração serial na aplicação (gerenciamento, Send/Recv no rank 0).
-- O overhead de comunicação (Send/Recv) aumenta com o número de processos.
+**Sub-linear.** O maior speedup obtido foi **6.769x com 16 processos**, enquanto o ideal seria 16x. Causas:
+- Fração serial na coleta de resultados: o rank 0 recebe sequencialmente de cada worker via `Recv`.
+- Overhead de comunicação MPI (Send/Recv) cresce com o número de processos.
 - Com 16 processos em 1 nó, ocorre oversubscription (mais processos do que cores físicos).
 
-### 7.2 A partir de quantos processos a eficiência cai significativamente?
+### 8.2 A partir de quantos processos a eficiência cai significativamente?
 
-Entre **8 e 16 processos** a eficiência cai de **81.7% para 42.3%** — uma queda de quase 50 pontos percentuais. A causa provável é o **oversubscription**: o nó não possui 16 cores físicos. Com mais processos do que cores, o SO usa hyperthreading e os processos disputam recursos de CPU, memória cache e barramento de memória, aumentando o overhead sem ganho proporcional de computação.
+Entre **8 e 16 processos** a eficiência despenca de **81.8% para 42.3%** — queda de ~40 pontos percentuais. Causa: o nó não tem 16 cores físicos. Com oversubscription, os processos disputam as mesmas unidades de execução (FPU, cache L1/L2, barramento de memória), gerando contenção sem ganho proporcional.
 
-### 7.3 Impacto da rede (intra-nó vs. inter-nós)
+### 8.3 Impacto da rede (intra-nó vs. inter-nós)
 
-Todos os testes foram executados em 1 nó (comunicação via memória compartilhada/InfiniBand intra-nó). A expectativa para execução inter-nós é que o tempo aumente devido à latência de rede, especialmente na coleta de resultados pelo rank 0 (múltiplos `Recv` de nós distintos).
+*A ser completado após execução do `job_internos.sh`.*
 
-Para completar esta análise, executar com `--nodes=2 --ntasks=4 --ntasks-per-node=2` e comparar com `--nodes=1 --ntasks=4`.
+A expectativa teórica é que execuções inter-nós sejam mais lentas do que intra-nó com o mesmo número de processos, pois:
+- Comunicação intra-nó usa memória compartilhada ou InfiniBand local (baixa latência).
+- Comunicação inter-nós passa pela rede Ethernet/InfiniBand do cluster, com maior latência e menor banda efetiva para mensagens grandes (blocos de linhas de N=4000 float64).
 
-### 7.4 Impacto do Hyperthreading
+### 8.4 Impacto do Hyperthreading
 
-Comparando 8 processos (Sp = 6.540) com 16 processos (Sp = 6.769):
-- O ganho de speedup foi de apenas **0.23x** ao dobrar os processos.
-- A eficiência caiu pela metade (de 81.7% para 42.3%).
+Comparando 8 processos (Sp = 6.540, E = 81.8%) com 16 processos (Sp = 6.769, E = 42.3%):
 
-**Conclusão:** o hyperthreading **não é vantajoso** para esta aplicação. Multiplicação de matrizes é intensiva em memória e FPU — dois hyperthreads no mesmo core físico disputam as mesmas unidades de execução, gerando contenção em vez de paralelismo real.
+- Dobrar os processos gerou apenas **+0.23 de speedup adicional**.
+- A eficiência caiu pela metade.
 
-### 7.5 Lei de Amdahl — Estimativa da fração paralelizável
+**Conclusão:** hyperthreading **não é vantajoso** para esta aplicação. Multiplicação de matrizes é intensiva em FPU e memória — dois hyperthreads no mesmo core físico compartilham as mesmas unidades de execução, gerando contenção em vez de paralelismo real.
 
-A Lei de Amdahl diz:
+### 8.5 Lei de Amdahl — Estimativa da fração paralelizável
 
 ```
 Sp = 1 / (f + (1 - f) / P)
 ```
 
-Onde `f` é a fração serial e `P` é o número de processos. Usando os dados de 8 processos (Sp = 6.540):
+Usando P = 8, Sp = 6.540:
 
 ```
-6.540 = 1 / (f + (1 - f) / 8)
-6.540 × (f + (1-f)/8) = 1
-6.540f + 0.8175(1-f) = 1
-5.7225f = 0.1825
-f ≈ 0.032 (3.2%)
+6.540 = 1 / (f + (1-f)/8)
+6.540 × (8f + 1 - f) / 8 = 1
+6.540 × (7f + 1) = 8
+45.78f + 6.540 = 8
+45.78f = 1.460
+f ≈ 0.032  →  3.2% serial
 ```
 
-**Fração paralelizável: p = 1 - f ≈ 96.8%**
+**Fração paralelizável: p = 1 - 0.032 ≈ 96.8%**
 
-Isso significa que aproximadamente **3.2% do tempo** é inerentemente serial (inicialização MPI, geração de matrizes antes do timer não foi contada, coleta sequencial no rank 0). Com infinitos processos, o speedup máximo teórico seria:
-
+Speedup máximo teórico (P → ∞):
 ```
 Sp_max = 1 / f = 1 / 0.032 ≈ 31.3x
 ```
 
 ---
 
-## 8. Conclusões
+## 9. Conclusões
 
 | Quesito | Resultado |
 |---------|-----------|
+| N utilizado | 3000 (rodada inicial); **4000 obrigatório** |
+| Tempo sequencial (N=3000) | 58.48s — inferior a 3 min → exige N=4000 |
 | Melhor speedup obtido | 6.769x (16 processos, 1 nó) |
 | Melhor eficiência | 96.2% (2 processos) |
-| Ponto ótimo prático | 8 processos (Sp=6.54, E=81.7%) |
+| Ponto ótimo prático | **8 processos** (Sp=6.54, E=81.8%) |
 | Fração paralelizável | ≈ 96.8% |
-| Hyperthreading vantajoso? | Não — ganho marginal com alto custo de eficiência |
+| Hyperthreading vantajoso? | Não — ganho marginal com custo alto de eficiência |
+| Dados inter-nós | Pendente (job_internos.sh) |
 
-O modelo **Mestre-Escravo com decomposição por linhas** se mostrou eficiente para até 8 processos no mesmo nó. A partir de 16 processos, o overhead de oversubscription supera o ganho paralelo. Para escalar além de 8 processos com boa eficiência, seria necessário distribuir em múltiplos nós.
+O modelo **Mestre-Escravo com decomposição por linhas** é eficiente até 8 processos no mesmo nó. Acima disso, o overhead de oversubscription domina. Para escalar além de 8 processos com boa eficiência, é necessário distribuir em múltiplos nós — o que será avaliado nos experimentos inter-nós.
