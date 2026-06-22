@@ -66,8 +66,8 @@ func main() {
 
 	var inicio time.Time
 	if rank == 0 {
-		fmt.Printf("Iniciando computação paralela (startRow por processo varia)...\n")
 		inicio = time.Now()
+		fmt.Printf("Iniciando computação paralela (startRow por processo varia)...\n")
 	}
 
 	// -------------------------------------------------------

@@ -1,5 +1,3 @@
-# Trabalho-2-FPPD
- Processamento Paralelo: Multiplicação de Matrizes com MPI
 # T2 — Multiplicação de Matrizes com MPI em Go
 
 FPPD — Fundamentos de Processamento Paralelo e Distribuído (98713-04)  
@@ -7,21 +5,18 @@ Escola Politécnica — PUCRS — 2026/1
 
 ---
 
-## Download de Dependencias
-
-cd Paralelo
-go mod tidy
-
 ## Estrutura do Projeto
 
 ```
-t2/
+Trabalho-2-FPPD/
 ├── sequencial/
-│   ├── main.go       # Versão sequencial (baseline)
+│   ├── Main.go       # Versão sequencial (baseline)
 │   └── go.mod
-├── paralelo/
-│   ├── main.go       # Versão paralela com MPI (gompi)
-│   └── go.mod
+├── Paralelo/
+│   ├── Main.go       # Versão paralela com MPI (gompi)
+│   ├── go.mod
+│   ├── go.sum
+│   └── vendor/       # Dependências embutidas (não precisa de internet no cluster)
 └── README.md
 ```
 
@@ -30,47 +25,72 @@ t2/
 ## Dependências
 
 - Go 1.21+
-- OpenMPI instalado no cluster (disponível via módulo)
-- Pacote Go: `github.com/mnlphlp/gompi`
+- OpenMPI (disponível via `module load openmpi` no cluster)
+- Pacote Go: `github.com/mnlphlp/gompi` (já embutido em `Paralelo/vendor/`)
 
 ---
 
-## Compilação e Execução Local (para testes)
+## Conexão SSH ao Cluster Atlântica (PUCRS)
 
-### Versão Sequencial
+### 1. Gerar chave SSH (se ainda não tiver)
 
 ```bash
-cd Sequencial
-go build -o matmul_seq .
-./matmul_seq
+ssh-keygen -t ed25519 -C "seu_email@edu.pucrs.br"
+# Pressione Enter para aceitar o caminho padrão (~/.ssh/id_ed25519)
 ```
 
-### Versão Paralela
+### 2. Copiar chave para o cluster
 
 ```bash
-# Instalar OpenMPI (apenas uma vez, se ainda não instalado)
-sudo apt install openmpi-bin libopenmpi-dev
+ssh-copy-id USUARIO@atlantica.lad.pucrs.br
+# substitua USUARIO pelo seu login da PUCRS
+```
 
-cd Paralelo
-go mod tidy        # baixa a dependência gompi
-go build -o matmul_par .
-mpirun -np 4 ./matmul_par
+### 3. Conectar
+
+```bash
+ssh USUARIO@atlantica.lad.pucrs.br
+```
+
+### 4. Clonar o repositório no cluster
+
+```bash
+git clone https://github.com/LucasRCTaborda/Trabalho-2-FPPD.git
+cd Trabalho-2-FPPD
 ```
 
 ---
 
-## Execução no Cluster Atlântica (SLURM)
+## Compilação no Cluster
 
-### Carregar módulos necessários
+### Carregar módulos
 
 ```bash
 module load openmpi
 module load go
 ```
 
-### Script SLURM — Versão Sequencial (baseline)
+### Versão Sequencial
 
-Salvar como `job_seq.sh`:
+```bash
+cd sequencial
+go build -o matmul_seq .
+./matmul_seq
+```
+
+### Versão Paralela (usa vendor — sem internet necessária)
+
+```bash
+cd Paralelo
+go build -mod=vendor -o matmul_par .
+mpirun -np 4 ./matmul_par
+```
+
+---
+
+## Scripts SLURM
+
+### Sequencial (baseline) — `job_seq.sh`
 
 ```bash
 #!/bin/bash
@@ -91,9 +111,7 @@ for i in 1 2 3; do
 done
 ```
 
-### Script SLURM — Versão Paralela (exemplo: 4 processos em 1 nó)
-
-Salvar como `job_par_1no_4p.sh`:
+### Paralela — 1 nó, 4 processos — `job_par_1n4p.sh`
 
 ```bash
 #!/bin/bash
@@ -105,8 +123,8 @@ Salvar como `job_par_1no_4p.sh`:
 
 module load openmpi go
 
-cd $SLURM_SUBMIT_DIR/paralelo
-go build -o matmul_par .
+cd $SLURM_SUBMIT_DIR/Paralelo
+go build -mod=vendor -o matmul_par .
 
 for i in 1 2 3; do
     echo "--- Execução $i ---"
@@ -114,9 +132,7 @@ for i in 1 2 3; do
 done
 ```
 
-### Script SLURM — 4 processos em 2 nós (comparação inter-nós)
-
-Salvar como `job_par_2nos_4p.sh`:
+### Paralela — 2 nós, 4 processos — `job_par_2n4p.sh`
 
 ```bash
 #!/bin/bash
@@ -129,8 +145,8 @@ Salvar como `job_par_2nos_4p.sh`:
 
 module load openmpi go
 
-cd $SLURM_SUBMIT_DIR/paralelo
-go build -o matmul_par .
+cd $SLURM_SUBMIT_DIR/Paralelo
+go build -mod=vendor -o matmul_par .
 
 for i in 1 2 3; do
     echo "--- Execução $i ---"
@@ -138,17 +154,53 @@ for i in 1 2 3; do
 done
 ```
 
+### Paralela — 1 nó, 8 processos — `job_par_1n8p.sh`
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=matmul_par_1n8p
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --time=08:00:00
+#SBATCH --output=par_1n8p_%j.out
+
+module load openmpi go
+
+cd $SLURM_SUBMIT_DIR/Paralelo
+go build -mod=vendor -o matmul_par .
+
+for i in 1 2 3; do
+    echo "--- Execução $i ---"
+    mpirun -np 8 ./matmul_par
+done
+```
+
 ### Enviar jobs
 
 ```bash
 sbatch job_seq.sh
-sbatch job_par_1no_4p.sh
-sbatch job_par_2nos_4p.sh
+sbatch job_par_1n4p.sh
+sbatch job_par_2n4p.sh
+sbatch job_par_1n8p.sh
+# etc.
+```
+
+### Verificar fila
+
+```bash
+squeue -u $USER
+```
+
+### Ver resultado
+
+```bash
+cat seq_*.out
+cat par_1n4p_*.out
 ```
 
 ---
 
-## Configurações Experimentais Planejadas (≥ 8 configurações)
+## Configurações Experimentais (≥ 8 configurações)
 
 | Config | Nós | Processos | Objetivo                              |
 |--------|-----|-----------|---------------------------------------|
@@ -161,14 +213,13 @@ sbatch job_par_2nos_4p.sh
 | 7      | 4   | 8         | Escalabilidade distribuída            |
 | 8      | 8   | 16        | Alta escala distribuída               |
 
-> Cada configuração é executada **3 vezes**; registrar a **mediana** dos tempos.
+> Cada configuração executada **3 vezes** — registrar a **mediana** dos tempos.
 
 ---
 
 ## Verificação de Corretude
 
-Ambas as versões usam **seed = 42** para gerar as matrizes A e B.  
-Os cantos de C e o checksum devem ser **idênticos** entre a versão sequencial e a paralela.
+Ambas as versões usam **seed = 42**. Os cantos de C e o checksum devem ser **idênticos**.
 
 ---
 
@@ -176,15 +227,15 @@ Os cantos de C e o checksum devem ser **idênticos** entre a versão sequencial 
 
 **Mestre-Escravo com decomposição por linhas.**
 
-- O rank 0 atua como mestre: aguarda os resultados dos demais e monta a matriz C final.
 - Todos os processos geram A e B localmente (evita broadcast de O(N²) dados).
 - Cada processo calcula um subconjunto de linhas de C.
-- Os workers enviam suas linhas calculadas ao rank 0 via `Send/Recv`.
+- Workers enviam suas linhas ao rank 0 via `Send/Recv`.
+- Rank 0 monta C completo e mede o tempo total.
 
 ---
 
 ## Medição de Tempo
 
-- `time.Now()` e `time.Since()` no rank 0.
-- O tempo medido inclui: distribuição implícita (geração local) + cálculo + coleta (`Recv`).
-- **Excluído**: geração das matrizes A e B e impressão de resultados.
+- Timer inicia no rank 0 **após** `Barrier()` (todos sincronizados) e **antes** do cálculo.
+- Inclui: cálculo + coleta (`Recv`).
+- Exclui: geração das matrizes A e B.
