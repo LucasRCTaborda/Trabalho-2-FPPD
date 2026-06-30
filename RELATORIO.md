@@ -300,8 +300,8 @@ Eficiência
 
 | Processos | 1 nó — intra (s) | 2 nós — inter (s) | Diferença |
 |-----------|------------------|-------------------|-----------|
-| 4         | 36.62            | 36.62             | ≈ 0%      |
-| 8         | 32.37            | 25.10             | −22.5%    |
+| 4         | 37.08            | 36.62             | −1.2%     |
+| 8         | 32.20            | 25.10             | −22.0%    |
 
 ---
 
@@ -322,12 +322,12 @@ Entre **4 e 8 processos** a eficiência cai de **93.3% para 53.7%** — queda de
 
 | Processos | 1 nó (s) | 2 nós (s) | Resultado |
 |-----------|----------|-----------|-----------|
-| 4         | 36.62    | 36.62     | Desempenho idêntico |
-| 8         | 32.37    | 25.10     | Inter-nós **22.5% mais rápido** |
+| 4         | 37.08    | 36.62     | Inter-nós **1.2% mais rápido** |
+| 8         | 32.20    | 25.10     | Inter-nós **22.0% mais rápido** |
 
 O resultado surpreendente é que com **8 processos, a execução inter-nós foi mais rápida** do que intra-nó. Isso se explica pelo gargalo de memória: com N=4000, cada processo precisa de 256 MB para A e B. Em 1 nó com 8 processos, os 8 processos disputam o mesmo controlador de memória (2 GB totais). Em 2 nós com 4 processos cada, essa pressão é dividida — cada nó tem apenas 4 × 256 MB = 1 GB acessando seu próprio controlador. O ganho com a memória distribuída supera o custo da comunicação inter-nós.
 
-Com 4 processos, a pressão de memória ainda não é crítica em 1 nó, por isso intra e inter-nós têm desempenho equivalente.
+Com 4 processos, a diferença é mínima (1.2%) porque a pressão de memória ainda não é crítica em 1 nó — o benefício da distribuição de memória não compensa o overhead da rede nesse patamar.
 
 ### 8.4 Impacto do Hyperthreading
 
@@ -378,6 +378,7 @@ Na prática o speedup é limitado muito antes desse valor pelo gargalo de memór
 | Ponto ótimo geral | **8 processos, 2 nós** (Sp=5.514, E=68.9%) |
 | Fração paralelizável | ≈ 97.6% |
 | Hyperthreading vantajoso? | Não — speedup cai de 4.298 para 4.191 ao dobrar processos |
+| Inter-nós vs. intra-nó (4p) | Inter-nós **1.2% mais rápido** — diferença marginal, pressão de memória ainda baixa |
 | Inter-nós vs. intra-nó (8p) | Inter-nós **22.0% mais rápido** — memória distribuída compensa custo de rede |
 
 O modelo **Mestre-Escravo com decomposição por linhas** escala bem até 4 processos no mesmo nó (E=94.6%). Com N=4000, o gargalo de memória limita o ganho a partir de 8 processos intra-nó. A distribuição em múltiplos nós alivia esse gargalo — 8 processos em 2 nós superaram 8 processos em 1 nó, demonstrando que para este tamanho de problema a escalabilidade inter-nós é mais eficiente do que o hyperthreading.
