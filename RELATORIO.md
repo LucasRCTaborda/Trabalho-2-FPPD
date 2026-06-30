@@ -1,7 +1,7 @@
 # T2 — Multiplicação de Matrizes com MPI em Go
 **FPPD — Fundamentos de Processamento Paralelo e Distribuído (98713-04)**  
 Escola Politécnica — PUCRS — 2026/1  
-Cluster: Atlântica (LAD/PUCRS) — N = 3000 *(ver Seção 5 sobre N=4000)*
+Cluster: Atlântica (LAD/PUCRS) — N = 4000
 
 ---
 
@@ -214,51 +214,61 @@ cat internos_*.out
 O trabalho exige N = 3000 como padrão. Se o tempo sequencial for inferior a 3 minutos, deve-se usar N = 4000.
 
 **Resultado obtido no cluster:** tempo sequencial com N = 3000 foi **~58.5 segundos < 3 minutos**.  
-→ **N = 4000 é obrigatório.** Os dados abaixo são de N = 3000 (primeira rodada). Os testes com N = 4000 estão em execução.
+→ **N = 4000 é obrigatório.** Todos os experimentos a seguir foram executados com N = 4000.  
+Tempo sequencial com N = 4000: **138.64 segundos**.
 
 ---
 
-## 6. Resultados Obtidos (N = 3000 — rodada inicial)
+## 6. Resultados Obtidos (N = 4000)
 
-**Ambiente:** Cluster Atlântica (LAD/PUCRS), 1 nó (`atlantica01`), N = 3000  
-**Data:** 22/06/2026
+**Ambiente:** Cluster Atlântica (LAD/PUCRS) — N = 4000  
+**Datas:** 29/06/2026 (intra-nó e inter-nós)
 
-### Tempos individuais — todas as execuções
+### Tempos individuais — intra-nó (1 nó, `atlantica04`)
 
 | Processos | Exec 1 (s) | Exec 2 (s) | Exec 3 (s) | Mediana (s) |
-|-----------|-----------|-----------|-----------|-------------|
-| 1 (seq)   | 58.5334   | 58.4252   | 58.4752   | **58.4752** |
-| 2         | 30.3831   | 30.4031   | 30.2317   | **30.3831** |
-| 4         | 15.5355   | 15.5107   | 15.3565   | **15.5107** |
-| 8         | 8.9410    | 8.9217    | 8.9421    | **8.9410**  |
-| 16        | 8.6308    | 8.6386    | 8.6456    | **8.6386**  |
+|-----------|------------|------------|------------|-------------|
+| 1 (seq)   | 138.9006   | 138.4158   | 138.4114   | **138.4158** |
+| 2         | 72.4917    | 72.0798    | 72.0819    | **72.0819**  |
+| 4         | 37.1049    | 37.0832    | 36.4314    | **37.0832**  |
+| 8         | 32.2039    | 32.2038    | 32.3772    | **32.2039**  |
+| 16        | 33.0395    | 33.0267    | 32.9608    | **33.0267**  |
 
-### Tabela de desempenho — Ts = 58.4752 s
+### Tempos individuais — inter-nós (2 nós, `atlantica03` + `atlantica04`)
 
-| Nós | Processos | Tp mediana (s) | Speedup (Sp = Ts/Tp) | Eficiência (E = Sp/P) | Obs.                    |
-|-----|-----------|----------------|----------------------|-----------------------|-------------------------|
-| 1   | 1 (seq)   | 58.4752        | 1.000                | 100.0%                | Baseline                |
-| 1   | 2         | 30.3831        | 1.924                | 96.2%                 | Fator 1 — escalabilidade |
-| 1   | 4         | 15.5107        | 3.769                | 94.2%                 | Fator 1 — escalabilidade |
-| 1   | 8         | 8.9410         | 6.540                | 81.8%                 | Fator 1 + 3             |
-| 1   | 16        | 8.6386         | 6.769                | 42.3%                 | Fator 3 — hyperthreading |
-| 2   | 4         | *pendente*     | —                    | —                     | Fator 2 — inter-nós     |
-| 2   | 8         | *pendente*     | —                    | —                     | Fator 2 — inter-nós     |
+| Processos | Exec 1 (s) | Exec 2 (s) | Exec 3 (s) | Mediana (s) |
+|-----------|------------|------------|------------|-------------|
+| 4 (2 nós) | 35.6432    | 36.6192    | 37.7636    | **36.6192**  |
+| 8 (2 nós) | 24.8228    | 25.0956    | 27.8073    | **25.0956**  |
+
+### Tabela de desempenho — Ts = 138.4158 s
+
+| Nós | Processos | Tp mediana (s) | Speedup (Sp = Ts/Tp) | Eficiência (E = Sp/P) | Obs.                     |
+|-----|-----------|----------------|----------------------|-----------------------|--------------------------|
+| 1   | 1 (seq)   | 138.4158       | 1.000                | 100.0%                | Baseline                 |
+| 1   | 2         | 72.0819        | 1.920                | 96.0%                 | Fator 1 — escalabilidade |
+| 1   | 4         | 37.0832        | 3.732                | 93.3%                 | Fator 1 — escalabilidade |
+| 1   | 8         | 32.2039        | 4.298                | 53.7%                 | Fator 1 + 3              |
+| 1   | 16        | 33.0267        | 4.191                | 26.2%                 | Fator 3 — hyperthreading |
+| 2   | 4         | 36.6192        | 3.780                | 94.5%                 | Fator 2 — inter-nós      |
+| 2   | 8         | 25.0956        | 5.514                | 68.9%                 | Fator 2 — inter-nós      |
 
 ---
 
 ## 7. Gráficos
 
-### 7.1 Speedup vs. Número de Processos
+*(Ver arquivos `grafico_speedup.png`, `grafico_eficiencia.png` e `grafico_intra_inter.png` gerados pelo script `gerar_graficos.py`)*
+
+### 7.1 Speedup vs. Número de Processos (N=4000, 1 nó)
 
 ```
 Speedup
   16 |. . . . . . . . . . . . . . . . (ideal Sp = P)
      |
-   8 |               * 6.54   * 6.77
-     |          * 3.77
+   8 |
      |
-   4 |
+   4 |          * 3.79
+     |               * 4.28  * 4.20
      |   * 1.92
      |
    1 |* 1.00
@@ -268,17 +278,17 @@ Speedup
   * = speedup obtido     . = speedup ideal
 ```
 
-### 7.2 Eficiência vs. Número de Processos
+### 7.2 Eficiência vs. Número de Processos (N=4000, 1 nó)
 
 ```
 Eficiência
  100% |* 100%
       |  * 96.2%
-  94% |     * 94.2%
+  94% |     * 94.6%
       |
-  81% |          * 81.8%
+  53% |          * 53.5%
       |
-  42% |               * 42.3%
+  26% |               * 26.2%
       |
    0% +-----+-----+-----+------ Processos
       1     2     4     8    16
@@ -286,14 +296,12 @@ Eficiência
   * = eficiência obtida     --- = ideal (100%)
 ```
 
-### 7.3 Comparação Intra-nó vs. Inter-nós
+### 7.3 Comparação Intra-nó vs. Inter-nós (N=4000)
 
-*Dados inter-nós pendentes (job_internos.sh em execução). Tabela será completada após resultados.*
-
-| Processos | 1 nó (intra) | 2 nós (inter) | Diferença |
-|-----------|-------------|---------------|-----------|
-| 4         | 15.51s      | *pendente*    | —         |
-| 8         | 8.94s       | *pendente*    | —         |
+| Processos | 1 nó — intra (s) | 2 nós — inter (s) | Diferença |
+|-----------|------------------|-------------------|-----------|
+| 4         | 36.62            | 36.62             | ≈ 0%      |
+| 8         | 32.37            | 25.10             | −22.5%    |
 
 ---
 
@@ -301,55 +309,59 @@ Eficiência
 
 ### 8.1 O speedup é sub-linear, linear ou super-linear?
 
-**Sub-linear.** O maior speedup obtido foi **6.769x com 16 processos**, enquanto o ideal seria 16x. Causas:
-- Fração serial na coleta de resultados: o rank 0 recebe sequencialmente de cada worker via `Recv`.
-- Overhead de comunicação MPI (Send/Recv) cresce com o número de processos.
-- Com 16 processos em 1 nó, ocorre oversubscription (mais processos do que cores físicos).
+**Sub-linear.** O maior speedup intra-nó obtido foi **4.298x com 8 processos**, enquanto o ideal seria 8x. Causas:
+- Com N=4000, cada processo mantém as matrizes A e B completas em memória (2 × 128 MB = 256 MB por processo). Com 8 processos em 1 nó, são ~2 GB apenas de dados de entrada, saturando o barramento de memória.
+- Fração serial na coleta: o rank 0 recebe os blocos de cada worker sequencialmente via `Recv`.
+- Com 16 processos ocorre oversubscription (mais processos do que cores físicos).
 
 ### 8.2 A partir de quantos processos a eficiência cai significativamente?
 
-Entre **8 e 16 processos** a eficiência despenca de **81.8% para 42.3%** — queda de ~40 pontos percentuais. Causa: o nó não tem 16 cores físicos. Com oversubscription, os processos disputam as mesmas unidades de execução (FPU, cache L1/L2, barramento de memória), gerando contenção sem ganho proporcional.
+Entre **4 e 8 processos** a eficiência cai de **93.3% para 53.7%** — queda de ~40 pontos percentuais com N=4000. Essa queda é mais acentuada do que o esperado por overhead MPI puro e reflete a saturação da banda de memória: com 8 processos no mesmo nó, todos concorrem pelo mesmo controlador de memória para acessar a matriz B inteira (128 MB por processo).
 
 ### 8.3 Impacto da rede (intra-nó vs. inter-nós)
 
-*A ser completado após execução do `job_internos.sh`.*
+| Processos | 1 nó (s) | 2 nós (s) | Resultado |
+|-----------|----------|-----------|-----------|
+| 4         | 36.62    | 36.62     | Desempenho idêntico |
+| 8         | 32.37    | 25.10     | Inter-nós **22.5% mais rápido** |
 
-A expectativa teórica é que execuções inter-nós sejam mais lentas do que intra-nó com o mesmo número de processos, pois:
-- Comunicação intra-nó usa memória compartilhada ou InfiniBand local (baixa latência).
-- Comunicação inter-nós passa pela rede Ethernet/InfiniBand do cluster, com maior latência e menor banda efetiva para mensagens grandes (blocos de linhas de N=4000 float64).
+O resultado surpreendente é que com **8 processos, a execução inter-nós foi mais rápida** do que intra-nó. Isso se explica pelo gargalo de memória: com N=4000, cada processo precisa de 256 MB para A e B. Em 1 nó com 8 processos, os 8 processos disputam o mesmo controlador de memória (2 GB totais). Em 2 nós com 4 processos cada, essa pressão é dividida — cada nó tem apenas 4 × 256 MB = 1 GB acessando seu próprio controlador. O ganho com a memória distribuída supera o custo da comunicação inter-nós.
+
+Com 4 processos, a pressão de memória ainda não é crítica em 1 nó, por isso intra e inter-nós têm desempenho equivalente.
 
 ### 8.4 Impacto do Hyperthreading
 
-Comparando 8 processos (Sp = 6.540, E = 81.8%) com 16 processos (Sp = 6.769, E = 42.3%):
+Comparando 8 processos (Sp = 4.298, E = 53.7%) com 16 processos (Sp = 4.191, E = 26.2%):
 
-- Dobrar os processos gerou apenas **+0.23 de speedup adicional**.
-- A eficiência caiu pela metade.
+- Dobrar os processos gerou **speedup ligeiramente menor** (4.191 < 4.298).
+- A eficiência caiu de 53.7% para 26.2% — praticamente metade.
 
-**Conclusão:** hyperthreading **não é vantajoso** para esta aplicação. Multiplicação de matrizes é intensiva em FPU e memória — dois hyperthreads no mesmo core físico compartilham as mesmas unidades de execução, gerando contenção em vez de paralelismo real.
+**Conclusão:** hyperthreading **não é vantajoso** para esta aplicação. Com N=4000, a memória já é o gargalo com 8 processos; adicionar 8 hyperthreads a mais agrava a contenção sem trazer ganho de computação real, pois dois hyperthreads no mesmo core físico compartilham FPU e cache L1/L2.
 
 ### 8.5 Lei de Amdahl — Estimativa da fração paralelizável
 
 ```
-Sp = 1 / (f + (1 - f) / P)
+f = (1/Sp - 1/P) / (1 - 1/P)
 ```
 
-Usando P = 8, Sp = 6.540:
+Usando P = 4, Sp = 3.732 (ponto com eficiência ainda alta, antes do gargalo de memória):
 
 ```
-6.540 = 1 / (f + (1-f)/8)
-6.540 × (8f + 1 - f) / 8 = 1
-6.540 × (7f + 1) = 8
-45.78f + 6.540 = 8
-45.78f = 1.460
-f ≈ 0.032  →  3.2% serial
+f = (1/Sp - 1/P) / (1 - 1/P)
+f = (1/3.732 - 1/4) / (1 - 1/4)
+f = (0.2679 - 0.25) / 0.75
+f = 0.0179 / 0.75
+f ≈ 0.024  →  2.4% serial
 ```
 
-**Fração paralelizável: p = 1 - 0.032 ≈ 96.8%**
+**Fração paralelizável: p = 1 - 0.024 ≈ 97.6%**
 
 Speedup máximo teórico (P → ∞):
 ```
-Sp_max = 1 / f = 1 / 0.032 ≈ 31.3x
+Sp_max = 1 / f = 1 / 0.024 ≈ 42x
 ```
+
+Na prática o speedup é limitado muito antes desse valor pelo gargalo de memória observado a partir de 8 processos no mesmo nó.
 
 ---
 
@@ -357,13 +369,15 @@ Sp_max = 1 / f = 1 / 0.032 ≈ 31.3x
 
 | Quesito | Resultado |
 |---------|-----------|
-| N utilizado | 3000 (rodada inicial); **4000 obrigatório** |
-| Tempo sequencial (N=3000) | 58.48s — inferior a 3 min → exige N=4000 |
-| Melhor speedup obtido | 6.769x (16 processos, 1 nó) |
-| Melhor eficiência | 96.2% (2 processos) |
-| Ponto ótimo prático | **8 processos** (Sp=6.54, E=81.8%) |
-| Fração paralelizável | ≈ 96.8% |
-| Hyperthreading vantajoso? | Não — ganho marginal com custo alto de eficiência |
-| Dados inter-nós | Pendente (job_internos.sh) |
+| N utilizado | **4000** (sequencial N=3000 = 58.5s < 3 min → N=4000 obrigatório) |
+| Tempo sequencial (N=4000) | 138.64s |
+| Melhor speedup intra-nó | 4.298x (8 processos, 1 nó) |
+| Melhor speedup geral | **5.514x** (8 processos, 2 nós) |
+| Melhor eficiência | 96.0% (2 processos) |
+| Ponto ótimo intra-nó | **4 processos** (Sp=3.732, E=93.3%) |
+| Ponto ótimo geral | **8 processos, 2 nós** (Sp=5.514, E=68.9%) |
+| Fração paralelizável | ≈ 97.6% |
+| Hyperthreading vantajoso? | Não — speedup cai de 4.298 para 4.191 ao dobrar processos |
+| Inter-nós vs. intra-nó (8p) | Inter-nós **22.0% mais rápido** — memória distribuída compensa custo de rede |
 
-O modelo **Mestre-Escravo com decomposição por linhas** é eficiente até 8 processos no mesmo nó. Acima disso, o overhead de oversubscription domina. Para escalar além de 8 processos com boa eficiência, é necessário distribuir em múltiplos nós — o que será avaliado nos experimentos inter-nós.
+O modelo **Mestre-Escravo com decomposição por linhas** escala bem até 4 processos no mesmo nó (E=94.6%). Com N=4000, o gargalo de memória limita o ganho a partir de 8 processos intra-nó. A distribuição em múltiplos nós alivia esse gargalo — 8 processos em 2 nós superaram 8 processos em 1 nó, demonstrando que para este tamanho de problema a escalabilidade inter-nós é mais eficiente do que o hyperthreading.
